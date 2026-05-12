@@ -63,3 +63,10 @@ Simply find the configuration line in your existing code and paste this new stri
 
 This generator proves that you don't need heavy libraries like Three.js to create compelling, high-fidelity motion graphics for the web.
 
+
+
+
+find more: <br>
+https://turnerworks.uk <br>
+https://github.com/turnerworks <br>
+<Br>
