@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Morphing Low-Poly Background</title>
+    <style>
+        :root {
+            --bg-color: #001219;
+            --text-color: #ffffff;
+            --accent: #3498db;
+            --panel-bg: rgba(0, 18, 25, 0.85);
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: var(--bg-color);
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        /* Canvas Wrapper */
+        .poly-bg-wrapper {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            transition: filter 0.1s ease-out;
+        }
+
+        #wallpaper-poly-canvas {
+            display: block;
+            height: 100%;
+            width: 100%;
+        }
+
+        /* Control Panel */
+        .controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+            background: var(--panel-bg);
+            backdrop-filter: blur(15px);
+            padding: 0;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: white;
+            width: 280px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+            max-height: calc(100vh - 40px);
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s;
+        }
+
+        .controls.collapsed {
+            transform: translateX(calc(100% + 40px));
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .controls-header {
+            padding: 15px 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .controls-header h2 {
+            margin: 0;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            font-weight: 600;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+            font-size: 1.2rem;
+            opacity: 0.6;
+            transition: opacity 0.2s;
+        }
+
+        .close-btn:hover { opacity: 1; }
+
+        .controls-body {
+            padding: 20px;
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+
+        /* Toggle Button */
+        #toggle-controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 90;
+            background: var(--accent);
+            color: white;
+            border: none;
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s;
+        }
+
+        #toggle-controls:active { transform: scale(0.9); }
+
+        .control-group {
+            margin-bottom: 18px;
+        }
+
+        .control-group label {
+            display: block;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+            opacity: 0.8;
+        }
+
+        .control-group input[type="range"] {
+            width: 100%;
+            cursor: pointer;
+            accent-color: var(--accent);
+        }
+
+        .control-group .val {
+            float: right;
+            font-family: monospace;
+            color: var(--accent);
+        }
+
+        /* Color Swatch */
+        .color-preview-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 5px;
+        }
+
+
+        /* Buttons */
+        .btn-primary {
+            background: var(--accent);
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 6px;
+            width: 100%;
+            cursor: pointer;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 10px;
+            transition: filter 0.2s;
+        }
+        .btn-primary:hover { filter: brightness(1.1); }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 200;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(5px);
+        }
+
+        .modal {
+            background: #001219;
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 16px;
+            width: 90%;
+            max-width: 400px;
+            padding: 30px;
+            color: white;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+        }
+
+        .modal h3 { margin-top: 0; }
+        .modal p { opacity: 0.7; font-size: 0.9rem; margin-bottom: 25px; }
+
+        .export-option {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            transition: background 0.2s;
+        }
+
+        .export-option:hover { background: rgba(255,255,255,0.1); }
+
+        .export-option i { font-size: 1.2rem; color: var(--accent); }
+
+        .close-modal {
+            margin-top: 10px;
+            background: none;
+            border: none;
+            color: white;
+            opacity: 0.5;
+            cursor: pointer;
+            width: 100%;
+            text-align: center;
+        }
+
+        /* Content Overlay */
+        .content {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            color: var(--text-color);
+            pointer-events: none;
+        }
+
+        .glass-panel {
+            background: rgba(0, 18, 25, 0.4);
+            backdrop-filter: blur(4px);
+            padding: 2.5rem;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            max-width: 450px;
+            text-align: center;
+            pointer-events: auto;
+            margin: 20px;
+        }
+
+
+        /* Floating Action Button Container */
+        .fab-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        /* Secondary FAB (Help Button) */
+        #toggle-help {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            position: relative;
+            right:60px;
+        }
+
+        #toggle-help:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+
+        /* Ensure the Help Modal is readable */
+        #helpModal .modal p {
+            margin-bottom: 15px;
+            line-height: 1.5;
+        }
+
+        #helpModal code {
+            background: rgba(10, 147, 150, 0.2);
+            color: var(--accent);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+
+        
+        
+        
+        h1 { margin: 0 0 1rem 0; font-weight: 300; letter-spacing: 2px; text-transform: uppercase; font-size: 1.5rem; }
+        p { margin: 0; opacity: 0.6; font-weight: 300; line-height: 1.6; font-size: 0.9rem; }
+
+        @media (max-width: 600px) {
+            .controls { 
+                top: auto;
+                bottom: 0;
+                right: 0;
+                width: 100%;
+                border-radius: 20px 20px 0 0;
+                max-height: 70vh;
+            }
+            .controls.collapsed {
+                transform: translateY(100%);
+            }
+            #toggle-controls {
+                top: auto;
+                bottom: 20px;
+            }
+            
+            .fab-container {
+                top: auto;
+                bottom: 20px;
+                right: 20px;
+                flex-direction: column-reverse;
+            }
+            
+            #toggle-help {
+                top: calc(100vh - 85px);
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Floating Action Buttons -->
+    <div style="position: fixed; top: 20px; right: 20px; z-index: 100; display: flex; gap: 10px;">
+        <!-- Help Button -->
+        <button id="toggle-help" title="How to use" >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+        </button>
+
+        <!-- Settings Button (Your existing one) -->
+        <button id="toggle-controls" title="Open Settings">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+        </button>
+    </div>
+
+    <div class="controls collapsed" id="controlsPanel">
+        <div class="controls-header">
+            <h2>Configuration</h2>
+            <button class="close-btn" id="closePanel">&times;</button>
+        </div>
+        <div class="controls-body">
+            <div class="control-group">
+                <label>Drift (Complexity) <span class="val" id="v-drift">60</span></label>
+                <input type="range" id="drift" min="0" max="200" value="60">
+            </div>
+            <div class="control-group">
+                <label>Speed <span class="val" id="v-speed">1.0</span></label>
+                <input type="range" id="speed" min="0" max="50" value="10">
+            </div>
+            <div class="control-group">
+                <label>Opacity <span class="val" id="v-opacity">0.4</span></label>
+                <input type="range" id="opacity" min="0" max="100" value="40">
+            </div>
+            
+            <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 20px 0;">
+            
+            <div class="control-group">
+                <label>Blur <span class="val" id="v-blur">0px</span></label>
+                <input type="range" id="blur" min="0" max="150" value="0">
+            </div>
+            <div class="control-group">
+                <label>Brightness <span class="val" id="v-brightness">100%</span></label>
+                <input type="range" id="brightness" min="0" max="200" value="100">
+            </div>
+            <div class="control-group">
+                <label>Saturate <span class="val" id="v-saturate">100%</span></label>
+                <input type="range" id="saturate" min="0" max="300" value="100">
+            </div>
+            <div class="control-group">
+                <label>Hue Rotate <span class="val" id="v-hue">0deg</span></label>
+                <input type="range" id="hue" min="0" max="360" value="0">
+            </div>
+
+            <button class="btn-primary" id="openExport">Export Background</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="exportModal">
+        <div class="modal">
+            <h3 style="letter-spacing: 1px; text-transform: uppercase; font-size: 1rem;">Export & Sync</h3>
+            <p>Use the standalone file for your projects, or quickly update an existing one with new settings.</p>
+
+            <!-- Option 1: The Master Template -->
+            <div class="export-option" onclick="exportFile('demo')">
+                <div style="font-size: 28px;">📦</div>
+                <div>
+                    <strong style="color: var(--accent);">Download Project Engine</strong>
+                    <div style="font-size: 0.75rem; opacity: 0.7; margin-top: 4px;">
+                        A clean, production-ready <b>.html</b> file. Perfect for landing pages or app backgrounds.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Option 2: The Quick Update -->
+            <div class="export-option" onclick="copyConfig()">
+                <div style="font-size: 28px;">⚡</div>
+                <div>
+                    <strong>Copy Settings Only</strong>
+                    <div style="font-size: 0.75rem; opacity: 0.7; margin-top: 4px;">
+                        Copy the <code>const cfg</code> line to your clipboard. Paste it into your existing file to sync new visuals instantly.
+                    </div>
+                </div>
+            </div>
+
+            <button class="close-modal" id="closeExport" style="margin-top: 20px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; font-size: 0.7rem;">Back to Editor</button>
+        </div>
+    </div>
+    
+    <div class="modal-overlay" id="helpModal">
+        <div class="modal" style="max-width: 500px;">
+            <h3 style="letter-spacing: 1px; text-transform: uppercase;">Guide & Instructions</h3>
+
+            <div style="text-align: left; font-size: 0.9rem; line-height: 1.6;">
+                <p><strong>What is this?</strong><br>A parametric generator for creating animated, low-poly mesh backgrounds for websites and apps.</p>
+
+                <p><strong>1. Design:</strong> Use the sliders to adjust the "Drift" (how much points move), "Speed", and "Filters" to find a look you like.</p>
+
+                <p><strong>2. Export:</strong> Click "Export Background" and choose <strong>Download Project Engine</strong>. This gives you a standalone <code>.html</code> file ready for use.</p>
+
+                <p><strong>3. Syncing:</strong> Already have a file? You don't need to download it again. Just click <strong>Copy Settings Only</strong> and paste that line into your existing project to update the visuals instantly.</p>
+            </div>
+
+            <button class="btn-primary" id="closeHelp" style="margin-top: 20px;">Got it</button>
+        </div>
+    </div>
+
+    <div class="poly-bg-wrapper" id="wallpaperWrapper">
+        <canvas id="wallpaper-poly-canvas"></canvas>
+    </div>
+
+    <div class="content">
+        <div class="glass-panel">
+            <h1>Mesh Generator</h1>
+            <p>A fully parametric, low-poly morphing background generator. Open settings to customize the drift, flow speed, and visual filters.</p>
+        </div>
+    </div>
+
+    <script>
+        // GLOBAL STATE
+        const wallpaperConfig = {
+            speedBase: 0.001,
+            speedMultiplier: 1.0,
+            drift: 60,
+            baseOpacity: 0.4,
+            colors: [
+                { r: 0, g: 18, b: 25 },   
+                { r: 0, g: 48, b: 73 },   
+                { r: 10, g: 147, b: 150 },
+                { r: 35, g: 70, b: 90 }    
+            ],
+            filters: {
+                blur: 0,
+                brightness: 100,
+                saturate: 100,
+                hue: 0
+            }
+        };
+
+        const wallpaperCanvas = document.getElementById('wallpaper-poly-canvas');
+        const wallpaperCtx = wallpaperCanvas.getContext('2d');
+        const wallpaperWrapper = document.getElementById('wallpaperWrapper');
+        const controlsPanel = document.getElementById('controlsPanel');
+
+        let wallpaperWidth, wallpaperHeight, wallpaperPoints;
+        const wallpaperGridX = 10; 
+        const wallpaperGridY = 10;
+
+        // UI Interactions
+        const setupUI = () => {
+            const toggleBtn = document.getElementById('toggle-controls');
+            const closeBtn = document.getElementById('closePanel');
+            const exportBtn = document.getElementById('openExport');
+            const exportModal = document.getElementById('exportModal');
+            const closeExport = document.getElementById('closeExport');
+            const helpBtn = document.getElementById('toggle-help');
+            const helpModal = document.getElementById('helpModal');
+            const closeHelp = document.getElementById('closeHelp');
+
+            // Show Help
+            helpBtn.onclick = () => {
+                helpModal.style.display = 'flex';
+            };
+
+            // Close Help
+            closeHelp.onclick = () => {
+                helpModal.style.display = 'none';
+            };
+
+            // Close modals if clicking background
+            window.onclick = (event) => {
+                if (event.target == helpModal) helpModal.style.display = 'none';
+                if (event.target == document.getElementById('exportModal')) {
+                    document.getElementById('exportModal').style.display = 'none';
+                }
+            };
+
+            toggleBtn.onclick = () => controlsPanel.classList.remove('collapsed');
+            closeBtn.onclick = () => controlsPanel.classList.add('collapsed');
+            
+            exportBtn.onclick = () => exportModal.style.display = 'flex';
+            closeExport.onclick = () => exportModal.style.display = 'none';
+
+            // Control Inputs
+            const inputs = {
+                drift: document.getElementById('drift'),
+                speed: document.getElementById('speed'),
+                opacity: document.getElementById('opacity'),
+                blur: document.getElementById('blur'),
+                brightness: document.getElementById('brightness'),
+                saturate: document.getElementById('saturate'),
+                hue: document.getElementById('hue')
+            };
+
+            const updateFilters = () => {
+                wallpaperWrapper.style.filter = `
+                    blur(${wallpaperConfig.filters.blur}px) 
+                    brightness(${wallpaperConfig.filters.brightness}%) 
+                    saturate(${wallpaperConfig.filters.saturate}%) 
+                    hue-rotate(${wallpaperConfig.filters.hue}deg)
+                `;
+            };
+
+            inputs.drift.oninput = (e) => {
+                wallpaperConfig.drift = parseInt(e.target.value);
+                document.getElementById('v-drift').innerText = wallpaperConfig.drift;
+            };
+            inputs.speed.oninput = (e) => {
+                wallpaperConfig.speedMultiplier = parseInt(e.target.value) / 10;
+                document.getElementById('v-speed').innerText = wallpaperConfig.speedMultiplier.toFixed(1);
+            };
+            inputs.opacity.oninput = (e) => {
+                wallpaperConfig.baseOpacity = parseInt(e.target.value) / 100;
+                document.getElementById('v-opacity').innerText = wallpaperConfig.baseOpacity.toFixed(2);
+            };
+            inputs.blur.oninput = (e) => {
+                wallpaperConfig.filters.blur = e.target.value;
+                document.getElementById('v-blur').innerText = e.target.value + 'px';
+                updateFilters();
+            };
+            inputs.brightness.oninput = (e) => {
+                wallpaperConfig.filters.brightness = e.target.value;
+                document.getElementById('v-brightness').innerText = e.target.value + '%';
+                updateFilters();
+            };
+            inputs.saturate.oninput = (e) => {
+                wallpaperConfig.filters.saturate = e.target.value;
+                document.getElementById('v-saturate').innerText = e.target.value + '%';
+                updateFilters();
+            };
+            inputs.hue.oninput = (e) => {
+                wallpaperConfig.filters.hue = e.target.value;
+                document.getElementById('v-hue').innerText = e.target.value + 'deg';
+                updateFilters();
+            };
+
+            updateFilters();
+        };
+
+        // Core Engine
+        function initWallpaper() {
+            wallpaperResize();
+            wallpaperAnimate();
+        }
+
+        function wallpaperResize() {
+            wallpaperWidth = window.innerWidth;
+            wallpaperHeight = window.innerHeight;
+            wallpaperCanvas.width = wallpaperWidth;
+            wallpaperCanvas.height = wallpaperHeight;
+            wallpaperCreatePoints();
+        }
+
+        function wallpaperCreatePoints() {
+            wallpaperPoints = [];
+            for (let i = 0; i <= wallpaperGridX; i++) {
+                wallpaperPoints[i] = [];
+                for (let j = 0; j <= wallpaperGridY; j++) {
+                    const x = (i / wallpaperGridX) * wallpaperWidth;
+                    const y = (j / wallpaperGridY) * wallpaperHeight;
+                    wallpaperPoints[i][j] = {
+                        originX: x, originY: y, x: x, y: y,
+                        offsetX: Math.random() * Math.PI * 2,
+                        offsetY: Math.random() * Math.PI * 2,
+                        speedX: 0.5 + Math.random(),
+                        speedY: 0.5 + Math.random()
+                    };
+                }
+            }
+        }
+
+        function wallpaperUpdatePoints() {
+            const time = Date.now() * wallpaperConfig.speedBase * wallpaperConfig.speedMultiplier;
+            for (let i = 0; i <= wallpaperGridX; i++) {
+                for (let j = 0; j <= wallpaperGridY; j++) {
+                    const p = wallpaperPoints[i][j];
+                    p.x = p.originX + Math.cos(time * p.speedX + p.offsetX) * wallpaperConfig.drift;
+                    p.y = p.originY + Math.sin(time * p.speedY + p.offsetY) * wallpaperConfig.drift;
+                }
+            }
+        }
+
+        function wallpaperDraw() {
+            wallpaperCtx.fillStyle = `rgb(${wallpaperConfig.colors[0].r}, ${wallpaperConfig.colors[0].g}, ${wallpaperConfig.colors[0].b})`;
+            wallpaperCtx.fillRect(0, 0, wallpaperWidth, wallpaperHeight);
+            const time = Date.now() * 0.0002;
+            for (let i = 0; i < wallpaperGridX; i++) {
+                for (let j = 0; j < wallpaperGridY; j++) {
+                    const p1 = wallpaperPoints[i][j], p2 = wallpaperPoints[i + 1][j];
+                    const p3 = wallpaperPoints[i][j + 1], p4 = wallpaperPoints[i + 1][j + 1];
+                    wallpaperDrawTriangle(p1, p2, p3, i, j, time);
+                    wallpaperDrawTriangle(p2, p3, p4, i, j, time);
+                }
+            }
+        }
+
+        function wallpaperDrawTriangle(p1, p2, p3, i, j, time) {
+            wallpaperCtx.beginPath();
+            wallpaperCtx.moveTo(p1.x, p1.y);
+            wallpaperCtx.lineTo(p2.x, p2.y);
+            wallpaperCtx.lineTo(p3.x, p3.y);
+            wallpaperCtx.closePath();
+            const colorFactor = (Math.sin(time + (i + j) * 0.5) + 1) / 2;
+            const c1 = wallpaperConfig.colors[1], c2 = wallpaperConfig.colors[2];
+            const r = Math.floor(c1.r + (c2.r - c1.r) * colorFactor);
+            const g = Math.floor(c1.g + (c2.g - c1.g) * colorFactor);
+            const b = Math.floor(c1.b + (c2.b - c1.b) * colorFactor);
+            const alpha = wallpaperConfig.baseOpacity + (Math.cos(time + i) + 1) * 0.1;
+            wallpaperCtx.fillStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
+            wallpaperCtx.fill();
+            const lineAlpha = wallpaperConfig.baseOpacity * 0.25;
+            wallpaperCtx.strokeStyle = `rgba(255, 255, 255, ${lineAlpha})`;
+            wallpaperCtx.lineWidth = 0.8;
+            wallpaperCtx.stroke();
+        }
+
+        function wallpaperAnimate() {
+            wallpaperUpdatePoints();
+            wallpaperDraw();
+            requestAnimationFrame(wallpaperAnimate);
+        }
+
+        // Export Logic
+        window.exportFile = (type) => {
+            if (type === 'demo') {
+                const cfg = wallpaperConfig;
+
+                // Construct the minimal standalone HTML
+                const isolatedHtml = `<!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Isolated Mesh Background</title>
+            <style>
+                body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: rgb(${cfg.colors[0].r}, ${cfg.colors[0].g}, ${cfg.colors[0].b}); }
+                #canvas { 
+                    display: block; 
+                    filter: blur(${cfg.filters.blur}px) brightness(${cfg.filters.brightness}%) saturate(${cfg.filters.saturate}%) hue-rotate(${cfg.filters.hue}deg); 
+                }
+            </style>
+        </head>
+        <body>
+            <canvas id="canvas"></canvas>
+            <script>
+                const cfg = ${JSON.stringify({
+                    speed: cfg.speedMultiplier,
+                    drift: cfg.drift,
+                    opacity: cfg.baseOpacity,
+                    colors: cfg.colors
+                })};
+
+                const canvas = document.getElementById('canvas');
+                const ctx = canvas.getContext('2d');
+                let w, h, pts;
+                const grid = 10;
+
+                function init() {
+                    w = canvas.width = window.innerWidth;
+                    h = canvas.height = window.innerHeight;
+                    pts = [];
+                    for (let i = 0; i <= grid; i++) {
+                        pts[i] = [];
+                        for (let j = 0; j <= grid; j++) {
+                            pts[i][j] = {
+                                ox: (i/grid)*w, oy: (j/grid)*h, x: 0, y: 0,
+                                offX: Math.random()*Math.PI*2, offY: Math.random()*Math.PI*2,
+                                spX: 0.5+Math.random(), spY: 0.5+Math.random()
+                            };
+                        }
+                    }
+                }
+
+                function draw() {
+                    ctx.fillStyle = "rgb("+cfg.colors[0].r+","+cfg.colors[0].g+","+cfg.colors[0].b+")";
+                    ctx.fillRect(0,0,w,h);
+                    const t = Date.now() * 0.001 * cfg.speed;
+                    const ct = Date.now() * 0.0002;
+
+                    for(let i=0; i<=grid; i++) 
+                        for(let j=0; j<=grid; j++) {
+                            pts[i][j].x = pts[i][j].ox + Math.cos(t * pts[i][j].spX + pts[i][j].offX) * cfg.drift;
+                            pts[i][j].y = pts[i][j].oy + Math.sin(t * pts[i][j].spY + pts[i][j].offY) * cfg.drift;
+                        }
+
+                    for(let i=0; i<grid; i++) {
+                        for(let j=0; j<grid; j++) {
+                            renderTri(pts[i][j], pts[i+1][j], pts[i][j+1], i, j, ct);
+                            renderTri(pts[i+1][j], pts[i][j+1], pts[i+1][j+1], i, j, ct);
+                        }
+                    }
+                    requestAnimationFrame(draw);
+                }
+
+                function renderTri(p1, p2, p3, i, j, ct) {
+                    ctx.beginPath();
+                    ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y);
+                    ctx.closePath();
+                    const cf = (Math.sin(ct + (i+j)*0.5)+1)/2;
+                    const r = Math.floor(cfg.colors[1].r + (cfg.colors[2].r - cfg.colors[1].r)*cf);
+                    const g = Math.floor(cfg.colors[1].g + (cfg.colors[2].g - cfg.colors[1].g)*cf);
+                    const b = Math.floor(cfg.colors[1].b + (cfg.colors[2].b - cfg.colors[1].b)*cf);
+                    ctx.fillStyle = "rgba("+r+","+g+","+b+","+(cfg.opacity + (Math.cos(ct+i)+1)*0.1)+")";
+                    ctx.fill();
+                    ctx.strokeStyle = "rgba(255,255,255,"+(cfg.opacity*0.25)+")";
+                    ctx.stroke();
+                }
+
+                window.onresize = init;
+                init(); draw();
+            <\/script>
+        </body>
+        </html>`;
+
+                const blob = new Blob([isolatedHtml], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'mesh-bg-standalone.html';
+                a.click();
+            }
+            document.getElementById('exportModal').style.display = 'none';
+        };
+
+        
+
+        window.copyConfig = () => {
+            const cfg = {
+                speed: wallpaperConfig.speedMultiplier,
+                drift: wallpaperConfig.drift,
+                opacity: wallpaperConfig.baseOpacity,
+                colors: wallpaperConfig.colors
+            };
+
+            const configString = `const cfg = ${JSON.stringify(cfg)};`;
+
+            const el = document.createElement('textarea');
+            el.value = configString;
+            document.body.appendChild(el);
+            el.select();
+            document.execCommand('copy');
+            document.body.removeChild(el);
+
+            // Updated alert for better UX
+            alert('Settings copied! Find "const cfg" in your HTML file and paste this line over it.');
+            document.getElementById('exportModal').style.display = 'none';
+        };
+
+        
+        window.addEventListener('resize', wallpaperResize);
+        window.addEventListener("load", () => {
+            setupUI();
+            initWallpaper();
+            
+            if (window.innerWidth > 1024) {
+                controlsPanel.classList.remove('collapsed');
+            }
+        });
+    </script>
+</body>
+</html>
